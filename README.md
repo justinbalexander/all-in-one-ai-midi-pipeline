@@ -230,6 +230,20 @@ Key dependencies (see `requirements.txt` for exact pins):
 
 ### 2. Run the Pipeline
 
+---
+
+## Select Which Tracks to Output (Optional)
+
+You can limit the final multi-track MIDI to a subset of canonical tracks using `--tracks`.
+
+Examples:
+
+Drums + bass + guitar only:
+
+```bash
+python pipeline.py run-batch "data/raw/*.wav" --tracks drums,bass,guitar
+
+
 Default (no key normalization, cleaning enabled):
 
     python pipeline.py run-batch "data/raw/*.wav"

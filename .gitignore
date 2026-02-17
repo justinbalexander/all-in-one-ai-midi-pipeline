@@ -35,3 +35,12 @@ data/models/
 
 # Manifests can be kept or regenerated
 #manifests/
+
+# generated outputs
+out_midis/
+manifests/
+data/
+*.mid
+
+# accidental backup files
+.gitignore.save
