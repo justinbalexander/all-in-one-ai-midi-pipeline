@@ -44,3 +44,23 @@ data/
 
 # accidental backup files
 .gitignore.save
+
+# generated outputs (ignore contents, keep folders via .gitkeep)
+out_midis/*
+!out_midis/.gitkeep
+
+manifests/*
+!manifests/.gitkeep
+
+data/*
+!data/.gitkeep
+!data/raw/.gitkeep
+!data/midi/.gitkeep
+!data/stems/.gitkeep
+!data/rawOld/.gitkeep
+
+# generated MIDI files anywhere
+*.mid
+
+# accidental backup files
+.gitignore.save
