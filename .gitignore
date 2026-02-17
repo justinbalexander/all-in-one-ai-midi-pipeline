@@ -1,65 +1,42 @@
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.so
 
 # Virtual envs
 .venv/
 .venv-ai-midi/
 
-# Local config / caches
-*.log
-*.tmp
+# macOS
 .DS_Store
 
-# Audio & large generated data
-# Keep the directories but ignore their contents by default
+# Logs / temp
+*.log
+*.tmp
+
+# --- Pipeline outputs: keep dirs, ignore contents ---
+out_midis/*
+!out_midis/.gitkeep
+
+# If you want manifests NOT on GitHub, ignore JSONs but keep the folder:
+manifests/*.json
+!manifests/.gitkeep
+
+# Keep these directories but ignore their contents by default
 data/raw/*
 data/stems/*
 data/midi/*
-data/cache/
-data/checkpoints/
-data/models/
+!data/raw/.gitkeep
+!data/stems/.gitkeep
+!data/midi/.gitkeep
+
+# Audio (don’t commit)
 *.wav
 *.aiff
 *.aif
 *.flac
 *.mp3
 
-# Allow placeholder files so these dirs stay in git
-!data/raw/.gitkeep
-!data/stems/.gitkeep
-!data/midi/.gitkeep
-
-# Manifests can be kept or regenerated
-#manifests/
-
-# generated outputs
-out_midis/
-manifests/
-data/
-*.mid
-
-# accidental backup files
-.gitignore.save
-
-# generated outputs (ignore contents, keep folders via .gitkeep)
-out_midis/*
-!out_midis/.gitkeep
-
-manifests/*
-!manifests/.gitkeep
-
-data/*
-!data/.gitkeep
-!data/raw/.gitkeep
-!data/midi/.gitkeep
-!data/stems/.gitkeep
-!data/rawOld/.gitkeep
-
-# generated MIDI files anywhere
+# MIDI (don’t commit)
 *.mid
 
 # accidental backup files
