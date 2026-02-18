@@ -1,7 +1,5 @@
-import math
-
 import pretty_midi
-from music21 import stream, note, chord, analysis
+from music21 import stream, note, pitch
 
 MAJOR_LIKE = {"major", "ionian", "maj"}
 MINOR_LIKE = {"minor", "aeolian", "min"}
@@ -14,19 +12,18 @@ def _collect_pitches(instruments):
     """
     pitches = []
     for name, inst in (instruments or {}).items():
-        # pretty_midi.Instrument has is_drum flag
         if getattr(inst, "is_drum", False):
             continue
         for n in inst.notes:
             if 0 < n.pitch < 128:
-                pitches.append(n.pitch)
+                pitches.append(int(n.pitch))
     return pitches
 
 
 def _detect_key_music21(pitches):
     """
-    Use music21's key analyzer on a synthetic stream built
-    from our MIDI pitches. Returns (tonic_str, mode_str) or (None, None).
+    Use music21's key analyzer on a synthetic stream built from MIDI pitches.
+    Returns (tonic_str, mode_str) or (None, None).
     """
     if not pitches:
         return None, None
@@ -43,67 +40,55 @@ def _detect_key_music21(pitches):
         return None, None
 
     try:
-        k = s.analyze("KrumhanslSchmuckler")  # standard profile-based key finder
+        k = s.analyze("KrumhanslSchmuckler")
     except Exception:
         return None, None
 
-    tonic = (k.tonic.name if hasattr(k, "tonic") else None)
-    mode = (k.mode.lower() if hasattr(k, "mode") and k.mode else None)
-
+    tonic = k.tonic.name if hasattr(k, "tonic") and k.tonic else None
+    mode = k.mode.lower() if hasattr(k, "mode") and k.mode else None
     return tonic, mode
 
 
 def _compute_transpose_semitones(tonic, mode):
     """
-    Decide how many semitones to transpose so that:
-      - any major-ish key -> C major
-      - any minor-ish key -> A minor
-    Returns (semitones, target_key_str) or (0, None) if unknown.
+    Decide semitone transpose so that:
+      - major-ish key -> C major
+      - minor-ish key -> A minor
+
+    Returns (semitones, target_key_str, reason) where:
+      - semitones is a signed int in [-6, +6]
+      - target_key_str is "C major" or "A minor" (or None if unknown)
+      - reason is an optional string for manifest clarity
     """
     if not tonic or not mode:
-        return 0, None
+        return 0, None, "missing tonic/mode"
 
-    tonic = tonic.upper()
-
-    # Map note name -> semitone in C-based scale (C=0..B=11)
-    name_to_pc = {
-        "C": 0, "B#": 0,
-        "C#": 1, "DB": 1,
-        "D": 2,
-        "D#": 3, "EB": 3,
-        "E": 4, "FB": 4,
-        "F": 5, "E#": 5,
-        "F#": 6, "GB": 6,
-        "G": 7,
-        "G#": 8, "AB": 8,
-        "A": 9,
-        "A#": 10, "BB": 10,
-        "B": 11, "CB": 11,
-    }
-
-    pc = name_to_pc.get(tonic)
-    if pc is None:
-        return 0, None
-
-    mode_norm = mode.lower()
-
+    mode_norm = (mode or "").lower()
     if mode_norm in MAJOR_LIKE:
-        # shift tonic -> C (0)
-        shift = (0 - pc) % 12
-        target = "C major"
+        target_tonic = "C"
+        target_label = "C major"
     elif mode_norm in MINOR_LIKE:
-        # shift tonic -> A (9)
-        shift = (9 - pc) % 12
-        target = "A minor"
+        target_tonic = "A"
+        target_label = "A minor"
     else:
-        # unknown/mode: don't mess with it
-        return 0, None
+        return 0, None, f"unsupported mode: {mode}"
 
-    # Normalize to [-6, +6] range just to avoid huge jumps
+    try:
+        src_pc = pitch.Pitch(tonic).pitchClass
+        tgt_pc = pitch.Pitch(target_tonic).pitchClass
+    except Exception as e:
+        return 0, None, f"pitch parse failed: {e}"
+
+    # unsigned shift in [0, 11]
+    shift = (tgt_pc - src_pc) % 12
+    # choose a signed minimal-ish shift in [-6, +6]
     if shift > 6:
         shift -= 12
 
-    return int(shift), target
+    if shift == 0:
+        return 0, target_label, "already in target key"
+
+    return int(shift), target_label, None
 
 
 def _transpose_instruments(instruments, semitones):
@@ -127,18 +112,18 @@ def _transpose_instruments(instruments, semitones):
         )
 
         for n in inst.notes:
-            new_pitch = n.pitch + semitones
+            new_pitch = int(n.pitch) + int(semitones)
             if 0 < new_pitch < 128:
                 new_inst.notes.append(
                     pretty_midi.Note(
-                        start=n.start,
-                        end=n.end,
+                        start=float(n.start),
+                        end=float(n.end),
                         pitch=int(new_pitch),
-                        velocity=n.velocity,
+                        velocity=int(n.velocity),
                     )
                 )
 
-        # Preserve control changes etc. if present
+        # Preserve CC / pitch bends (shallow copy is fine)
         for cc in getattr(inst, "control_changes", []):
             new_inst.control_changes.append(cc)
         for pb in getattr(inst, "pitch_bends", []):
@@ -148,7 +133,11 @@ def _transpose_instruments(instruments, semitones):
 
     return out
 
+
 def detect_key_only(assigned_instruments, manifest):
+    """
+    Detect key and write it into manifest["key"], without transposing.
+    """
     pitches = _collect_pitches(assigned_instruments)
     tonic, mode = _detect_key_music21(pitches)
 
@@ -156,21 +145,22 @@ def detect_key_only(assigned_instruments, manifest):
     key_info["detected_tonic"] = tonic
     key_info["detected_mode"] = mode
 
-    # no transposition here
     key_info["normalized"] = False
     key_info["transpose_semitones"] = 0
     key_info["target"] = None
+    key_info["reason"] = "key detection only"
+
     return tonic, mode
 
 
 def detect_and_normalize_key(assigned_instruments, CFG, manifest):
     """
-    1. Detect global key from current assigned instruments (ignoring drums).
-    2. If confident enough, transpose all pitched tracks so that:
+    1. Detect global key from assigned instruments (ignoring drums).
+    2. Transpose pitched tracks so that:
          - major-ish -> C major
          - minor-ish -> A minor
     3. Update manifest['key'] with detection + transpose info.
-    4. Return the (possibly) transposed instruments dict.
+    4. Return (possibly) transposed instruments dict.
     """
     pitches = _collect_pitches(assigned_instruments)
     tonic, mode = _detect_key_music21(pitches)
@@ -179,19 +169,32 @@ def detect_and_normalize_key(assigned_instruments, CFG, manifest):
     key_info["detected_tonic"] = tonic
     key_info["detected_mode"] = mode
 
-    semitones, target = _compute_transpose_semitones(tonic, mode)
+    semitones, target, reason = _compute_transpose_semitones(tonic, mode)
 
-    if target is None or semitones == 0:
-        # No reliable detection or already C/A
+    # If we couldn't determine a target, do nothing
+    if target is None:
         key_info["normalized"] = False
         key_info["transpose_semitones"] = 0
         key_info["target"] = None
+        key_info["reason"] = reason or "could not determine target key"
+        return assigned_instruments
+
+    # If already in target, record that normalization is effectively satisfied
+    if semitones == 0:
+        key_info["normalized"] = True
+        key_info["transpose_semitones"] = 0
+        key_info["target"] = target
+        key_info["reason"] = reason or "already in target key"
         return assigned_instruments
 
     normalized = _transpose_instruments(assigned_instruments, semitones)
 
     key_info["normalized"] = True
-    key_info["transpose_semitones"] = semitones
+    key_info["transpose_semitones"] = int(semitones)
     key_info["target"] = target
+    if reason:
+        key_info["reason"] = reason
+    else:
+        key_info.pop("reason", None)
 
     return normalized
