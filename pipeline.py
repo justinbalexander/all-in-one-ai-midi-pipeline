@@ -98,7 +98,7 @@ def process_one(audio_path: str, normalize_key: bool = False, no_clean: bool = F
     return out_mid, manifest_path
 
 def cmd_run_batch(pattern: str, normalize_key: bool = False, no_clean: bool = False, tracks=None):
-    files = sorted(glob.glob(pattern))
+    files = sorted(glob.glob(pattern, recursive=True))
     if not files:
         print(f"No files match: {pattern}")
         return 1
