@@ -6,47 +6,26 @@ DEFAULT_SR = 44100
 
 def _normalize_tempo(bpm: float) -> float:
     """
-    Normalize beat tracker tempo by correcting common confusions:
-    - double / half time
-    - 4/3 or 3/4 relationships
-
-    Heuristic:
-      1) Generate candidate tempos from simple ratios.
-      2) Restrict to 70–180 BPM.
-      3) If any candidate is in 90–110 BPM, prefer one of those.
-      4) Otherwise, pick the candidate with the "nicest" value
-         (closest to integer or .5).
+    Normalize beat tracker tempo by correcting half-time / double-time confusions.
+    Keeps the tempo as close to the detected value as possible while staying in
+    a plausible range (70–180 BPM).  Prefers the candidate nearest to the raw
+    detection so that the actual musical feel is preserved.
     """
     if bpm <= 0:
         return 120.0
 
     base = float(bpm)
 
-    # Common confusion ratios
-    ratios = [
-        1.0,
-        0.5, 2.0,          # half / double
-        0.75, 4.0 / 3.0,   # 3/4, 4/3
-    ]
+    # Only correct obvious half/double-time errors; avoid aggressive re-mapping.
+    ratios = [1.0, 0.5, 2.0]
 
     raw_candidates = [base * r for r in ratios]
-
-    # Only keep plausible musical tempos
     candidates = [c for c in raw_candidates if 70.0 <= c <= 180.0]
     if not candidates:
         candidates = [base]
 
-    # 3) Strong preference: if there are any candidates in [90, 110], choose among them.
-    mid_candidates = [c for c in candidates if 90.0 <= c <= 110.0]
-    if mid_candidates:
-        candidates = mid_candidates
-
-    # 4) Choose the candidate whose fractional part is closest to 0 or .5
-    def score(t):
-        nearest_half_step = round(t * 2) / 2.0
-        return abs(t - nearest_half_step)
-
-    best = min(candidates, key=score)
+    # Pick the candidate closest to the original detection (preserves musical feel).
+    best = min(candidates, key=lambda t: abs(t - base))
     return float(best)
 
 
