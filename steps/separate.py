@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -66,7 +67,7 @@ def separate_track(audio_path: str, CFG: dict, manifest: dict):
 
     if not (song_out_dir.exists() and any(song_out_dir.glob("*.wav"))):
         cmd = [
-            "python",
+            sys.executable,
             "-m",
             "demucs.separate",
             "-n",
